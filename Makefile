@@ -36,7 +36,7 @@
 CC = gcc
 CC_FLAGS = -Wall
 LD = gcc
-LD_FLAGS = -Wall -framework Carbon
+LD_FLAGS = -Wall -framework Carbon -lparson
 
 DESTDIR =
 PREFIX = $(DESTDIR)/usr/local

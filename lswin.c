@@ -36,11 +36,19 @@
 
 #include "winutils.h"
 
+#include "parson.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 #define ME "lswin"
-#define USAGE "usage: " ME " [-h] [-l] [-i id] [title]\n"
+#define USAGE "usage: " ME " [-h] [-l] [-j] [-i id] [title]\n"
 #define FULL_USAGE USAGE \
     "    -h       display this help text and exit\n" \
     "    -l       long display, include window ID column in output\n" \
+    "    -j       json output mode\n" \
     "    -i id    show only windows with this window ID (-1 for all)\n" \
     "    title    pattern to match \"Application - Title\" against\n"
 
@@ -48,7 +56,10 @@ typedef struct {
     int longDisplay;   /* include window ID column in output */
     int id;            /* show only windows with this window ID (-1 for all) */
     int numFound;      /* out parameter, number of windows found */
+    int jsonMode;      /* json output mode */
 } LsWinCtx;
+
+
 
 /* Callback for EnumerateWindows() prints title of each window it encounters */
 void PrintWindow(CFDictionaryRef window, void *ctxPtr) {
@@ -60,15 +71,40 @@ void PrintWindow(CFDictionaryRef window, void *ctxPtr) {
     CGPoint position = CGWindowGetPosition(window);
     CGSize size = CGWindowGetSize(window);
 
+    JSON_Value *root_value = json_value_init_object();
+    JSON_Object *root_object = json_value_get_object(root_value);
+    char *serialized_string = NULL;
+    char *pretty_serialized_string = NULL;
+    json_object_set_string(root_object, "appName", appName);
+    json_object_set_string(root_object, "windowName", windowName);
+    json_object_set_string(root_object, "title", title);
+    json_object_set_number(root_object, "windowId", windowId);
+    json_object_dotset_number(root_object, "size.height", (int)size.height);
+    json_object_dotset_number(root_object, "size.width", (int)size.width);
+    json_object_dotset_number(root_object, "position.x", (int)position.x);
+    json_object_dotset_number(root_object, "position.y", (int)position.y);
+    pretty_serialized_string = json_serialize_to_string_pretty(root_value);
+    serialized_string = json_serialize_to_string(root_value);
+
+
     if(ctx->id == -1 || ctx->id == windowId) {
-        if(ctx->longDisplay) printf("%d - ", windowId);
-        printf(
-            "%s - %d %d %d %d\n", title,
-            (int)position.x, (int)position.y,
-            (int)size.width, (int)size.height
-        );
+        if(ctx->jsonMode){
+            printf("%s",serialized_string);
+        }else if(ctx->longDisplay) {
+            printf(
+                "%s - %s %d %d %d %d %d\n", title,
+                appName,
+                (int)windowId,
+                (int)position.x, (int)position.y,
+                (int)size.width, (int)size.height
+            );
+        }else {
+            printf("%d\n", windowId);
+        }
         ctx->numFound++;
     }
+    json_free_serialized_string(serialized_string);
+    json_value_free(root_value);
     free(title);
     free(windowName);
     free(appName);
@@ -87,8 +123,11 @@ int main(int argc, char **argv) {
     ctx.longDisplay = 0;
     ctx.id = -1;
     ctx.numFound = 0;
-    while((ch = getopt(argc, argv, ":hli:")) != -1) {
+    while((ch = getopt(argc, argv, ":jhli:")) != -1) {
         switch(ch) {
+            case 'j':
+                ctx.jsonMode = 1;
+                break;
             case 'h':
                  printf(FULL_USAGE);
                  return 0;
